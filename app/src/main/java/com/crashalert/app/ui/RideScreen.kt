@@ -1,6 +1,7 @@
 package com.crashalert.app.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,6 +16,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -38,6 +42,9 @@ import com.crashalert.app.telemetry.VectorReading
 import com.crashalert.app.contacts.ContactRules
 import com.crashalert.app.contacts.TrustedContact
 import com.crashalert.app.location.RideLocation
+import com.crashalert.app.location.RideMetrics
+import com.crashalert.app.profile.RiderProfile
+import com.crashalert.app.profile.ProfileRules
 import android.os.SystemClock
 import java.text.DateFormat
 import java.util.Date
@@ -54,6 +61,10 @@ fun RideScreen(
     state: RideState,
     incident: IncidentState,
     contacts: List<TrustedContact>,
+    profile: RiderProfile?,
+    profileMessage: String?,
+    metrics: RideMetrics,
+    batteryPercent: Int?,
     contactMessage: String?,
     location: RideLocation?,
     locationMessage: String?,
@@ -64,11 +75,17 @@ fun RideScreen(
     onAddContact: (String, String) -> Unit,
     onRemoveContact: (TrustedContact) -> Unit,
     onComposeSms: (TrustedContact) -> Unit,
-    onRequestLocation: () -> Unit
+    onRequestLocation: () -> Unit,
+    onSaveProfile: (RiderProfile) -> Boolean
 ) {
+    var editingProfile by remember { mutableStateOf(false) }
     MaterialTheme {
         Surface(color = if (state.active && incident.phase in setOf(IncidentPhase.SELF_CHECK, IncidentPhase.CONTACT_HELP, IncidentPhase.URGENT_HELP)) Navy else Background, modifier = Modifier.fillMaxSize()) {
-            if (state.active && incident.phase in setOf(IncidentPhase.SELF_CHECK, IncidentPhase.CONTACT_HELP, IncidentPhase.URGENT_HELP)) {
+            if (profile == null || editingProfile) {
+                ProfileForm(profile, profileMessage, onSave = { value ->
+                    if (onSaveProfile(value)) editingProfile = false
+                }, onCancel = { editingProfile = false })
+            } else if (state.active && incident.phase in setOf(IncidentPhase.SELF_CHECK, IncidentPhase.CONTACT_HELP, IncidentPhase.URGENT_HELP)) {
                 EmergencyScreen(incident, contacts, location, locationMessage, onRequestLocation, onComposeSms, onCancelCheck)
             } else {
             Column(
@@ -81,6 +98,7 @@ fun RideScreen(
                 Spacer(Modifier.height(8.dp))
                 Text("CrashAlert", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Navy)
                 Text("Your ride companion", fontSize = 16.sp, color = Muted)
+                Text("Good to see you, ${profile.fullName.substringBefore(' ')}", fontSize = 22.sp, fontWeight = FontWeight.SemiBold, color = Navy)
 
                 Card(colors = CardDefaults.cardColors(containerColor = Navy), modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -125,8 +143,18 @@ fun RideScreen(
                 }
 
                 Text("Live sensors", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Navy)
+                RideMetricsCard(metrics, location, locationMessage, batteryPercent, state.active)
                 SensorCard("Accelerometer", "m/s²", state.accelerometerAvailable, state.accelerometer)
                 SensorCard("Gyroscope", "rad/s", state.gyroscopeAvailable, state.gyroscope)
+
+                Card(colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Medical ID", fontSize = 19.sp, fontWeight = FontWeight.Bold, color = Navy)
+                        Text("${profile.fullName} · ${profile.bloodGroup.ifBlank { "Blood group not set" }}", color = Navy)
+                        Text(if (profile.includeMedicalInDraft) "Included in manual SMS drafts" else "Private on this device · sharing off", color = Muted)
+                        if (!state.active) OutlinedButton(onClick = { editingProfile = true }) { Text("Edit rider & Medical ID") }
+                    }
+                }
 
                 ContactCard(
                     contacts = contacts,
@@ -228,6 +256,81 @@ private fun EmergencyScreen(
 }
 
 private fun formatCountdown(seconds: Int): String = "%02d:%02d".format(Locale.US, seconds / 60, seconds % 60)
+
+@Composable
+private fun ProfileForm(
+    profile: RiderProfile?,
+    message: String?,
+    onSave: (RiderProfile) -> Unit,
+    onCancel: () -> Unit
+) {
+    var name by remember(profile) { mutableStateOf(profile?.fullName.orEmpty()) }
+    var dob by remember(profile) { mutableStateOf(profile?.dateOfBirth.orEmpty()) }
+    var blood by remember(profile) { mutableStateOf(profile?.bloodGroup.orEmpty()) }
+    var allergies by remember(profile) { mutableStateOf(profile?.allergies.orEmpty()) }
+    var conditions by remember(profile) { mutableStateOf(profile?.conditions.orEmpty()) }
+    var medications by remember(profile) { mutableStateOf(profile?.medications.orEmpty()) }
+    var include by remember(profile) { mutableStateOf(profile?.includeMedicalInDraft ?: false) }
+    var expanded by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Spacer(Modifier.height(8.dp))
+        Text(if (profile == null) "Welcome to CrashAlert" else "Rider profile", fontSize = 29.sp, color = Navy, fontWeight = FontWeight.Bold)
+        Text("Set up your rider details. Medical ID is optional and stays on this device.", color = Muted)
+        OutlinedTextField(name, { name = it }, label = { Text("Full name *") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        Card(colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Medical ID", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Navy)
+                Text("Self-reported information for someone helping you. Check it for accuracy.", color = Muted, fontSize = 13.sp)
+                OutlinedTextField(dob, { dob = it }, label = { Text("Date of birth (YYYY-MM-DD)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Box {
+                    OutlinedButton(onClick = { expanded = true }) { Text("Blood group: ${blood.ifBlank { "Not set" }}") }
+                    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        DropdownMenuItem(text = { Text("Not set") }, onClick = { blood = ""; expanded = false })
+                        ProfileRules.bloodGroups.forEach { option ->
+                            DropdownMenuItem(text = { Text(option) }, onClick = { blood = option; expanded = false })
+                        }
+                    }
+                }
+                OutlinedTextField(allergies, { allergies = it }, label = { Text("Known allergies") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(conditions, { conditions = it }, label = { Text("Existing conditions") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(medications, { medications = it }, label = { Text("Current medications") }, modifier = Modifier.fillMaxWidth())
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = include, onCheckedChange = { include = it })
+                    Text("Include my Medical ID in SMS drafts I open", color = Navy)
+                }
+                Text("You must review and send each draft yourself. No medical data is sent by saving this card.", color = Muted, fontSize = 12.sp)
+            }
+        }
+        if (message != null) Text(message, color = Muted)
+        Button(onClick = {
+            onSave(RiderProfile(name, dob, blood, allergies, conditions, medications, include))
+        }, colors = ButtonDefaults.buttonColors(containerColor = Teal), modifier = Modifier.fillMaxWidth()) { Text("Save and continue") }
+        if (profile != null) OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
+    }
+}
+
+@Composable
+private fun RideMetricsCard(
+    metrics: RideMetrics,
+    location: RideLocation?,
+    locationMessage: String?,
+    batteryPercent: Int?,
+    active: Boolean
+) {
+    val fresh = active && metrics.isFresh(SystemClock.elapsedRealtime())
+    Card(colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Ride status", fontSize = 19.sp, fontWeight = FontWeight.Bold, color = Navy)
+            Row(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+                Column { Text("Speed", color = Muted); Text(if (fresh && metrics.speedKph != null) "${metrics.speedKph} km/h" else "Unavailable", color = Navy, fontWeight = FontWeight.Bold) }
+                Column { Text("Heading", color = Muted); Text(if (fresh) metrics.heading ?: "Unavailable" else "Unavailable", color = Navy, fontWeight = FontWeight.Bold) }
+            }
+            Text("Speed and direction come from location updates, not the accelerometer. Permission and a usable fix are required.", color = Muted, fontSize = 12.sp)
+            Text(if (fresh && location != null) "Location: %.5f, %.5f · ±%d m".format(Locale.US, location.latitude, location.longitude, location.accuracyMeters.toInt()) else locationMessage ?: "Location not active", color = Muted)
+            Text("Battery: ${batteryPercent?.let { "$it%" } ?: "Unavailable"}", color = Muted)
+        }
+    }
+}
 
 @Composable
 private fun ContactCard(

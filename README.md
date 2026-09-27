@@ -1,13 +1,13 @@
 # CrashAlert
 
-CrashAlert is a native Android ride monitoring app. Start a ride to view live accelerometer and gyroscope readings. A possible impact opens a prominent red emergency check with an alarm sound and an **I'm okay** action. Sampling stops when the app leaves the foreground.
+CrashAlert is a native Android ride monitoring app. On first launch, set up a rider name and optionally a Medical ID. Start a ride to view live motion readings and, with location permission and a usable fix, speed and heading reported by Android location. A possible impact opens a red emergency check with an alarm sound and an **I'm okay** action. Sampling and location updates stop when the app leaves the foreground.
 
 ## Open and run
 
 1. Open this repository in Android Studio with JDK 17 and Android SDK 36 installed.
 2. Let Android Studio sync Gradle dependencies (Android Gradle Plugin 8.13.2, Kotlin 2.2.20).
 3. Run the `app` configuration on a physical Android device with motion sensors. An emulator may have limited sensors.
-4. Tap **Start Ride**, move the device, and observe the live X/Y/Z values and last reading times. Use **Test self-check** to walk through the timed prompts without striking the device. Tap **End Ride** to stop.
+4. Complete the rider setup, then tap **Start Ride**. Grant location permission if you want speed, heading and coordinates; motion monitoring works without it. View the live X/Y/Z readings and use **Test self-check** to walk through the prompts without striking the device. Tap **End Ride** to stop.
 
 ### Implemented escalation UI
 
@@ -17,7 +17,9 @@ CrashAlert is a native Android ride monitoring app. Start a ride to view live ac
 
 These are **on-device prompts, not sent alerts**. No SMS, call, 112 request, or cloud event is dispatched by the timers. Test checks walk through the same UI without contacting anyone. The heuristic is unvalidated and a prompt is not confirmation of a crash.
 
-Motion sensors need no runtime permission. Sensor data stays on the device while the app is open. Up to three trusted contacts are saved locally. After an unanswered real check, the app can open a prefilled SMS draft for a selected contact. You can optionally request approximate foreground location; only a recent fix is added to the draft. If a recent fix is unavailable, the draft omits location. You must review and send it yourself; opening Messages ends ride monitoring. Test checks cannot open drafts or request location.
+Motion sensors need no runtime permission. Up to three trusted contacts are saved locally. Rider name, date of birth, blood group, allergies, conditions, and medications can be edited under **Medical ID**; the profile is encrypted on this device using Android Keystore. No medical data is sent by saving it. If the rider explicitly enables the Medical ID checkbox, it is included only in an SMS draft the rider opens and sends. This is self-reported information, not a medical assessment.
+
+During an active ride, optional foreground location updates may show actual device-reported speed, heading, coordinates, accuracy, and battery percentage. A missing or stale fix is shown as unavailable; speed is not inferred from accelerometer readings. A location permission grant does not automatically attach a location to SMS drafts. After a real unanswered check, the rider must tap **Get approximate location** to include a fresh location link in a manual SMS draft. If no recent fix exists, the draft omits it. Opening Messages ends ride monitoring. Test checks cannot open drafts or request location.
 
 ### Planned integrations
 
@@ -34,4 +36,6 @@ Run `:app:testDebugUnitTest` in Android Studio's Gradle tool window. The tests c
 - `app/src/main/java/com/crashalert/app/telemetry/IncidentEngine.kt`: pure impact prompt and timeout state machine.
 - `app/src/main/java/com/crashalert/app/contacts/TrustedContacts.kt`: local contact storage and validation.
 - `app/src/main/java/com/crashalert/app/location/RideLocation.kt`: location freshness check and map link.
+- `app/src/main/java/com/crashalert/app/location/RideMetrics.kt`: optional device-reported speed and bearing display.
+- `app/src/main/java/com/crashalert/app/profile/RiderProfile.kt`: validated rider setup and encrypted Medical ID storage.
 - `app/src/main/java/com/crashalert/app/ui/RideScreen.kt`: Compose screen and diagnostics.
