@@ -258,7 +258,7 @@ private fun EmergencyScreen(
 private fun formatCountdown(seconds: Int): String = "%02d:%02d".format(Locale.US, seconds / 60, seconds % 60)
 
 @Composable
-private fun ProfileForm(
+internal fun ProfileForm(
     profile: RiderProfile?,
     message: String?,
     onSave: (RiderProfile) -> Unit,

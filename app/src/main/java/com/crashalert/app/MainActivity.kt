@@ -11,6 +11,7 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.net.Uri
+import android.widget.Toast
 import android.os.CancellationSignal
 import android.os.Handler
 import android.os.Looper
@@ -34,7 +35,7 @@ import com.crashalert.app.location.RideMetricRules
 import com.crashalert.app.profile.RiderProfile
 import com.crashalert.app.profile.RiderProfileStore
 import com.crashalert.app.telemetry.AndroidMotionMonitor
-import com.crashalert.app.ui.RideScreen
+import com.crashalert.app.ui.CrashAlertAppScreen
 
 class MainActivity : ComponentActivity() {
     private val monitor: AndroidMotionMonitor get() = (application as CrashAlertApplication).monitor
@@ -71,7 +72,7 @@ class MainActivity : ComponentActivity() {
         contacts = contactStore.load()
         readBattery()
         setContent {
-            RideScreen(
+            CrashAlertAppScreen(
                 state = monitor.state,
                 incident = monitor.incident,
                 contacts = contacts,
@@ -82,15 +83,18 @@ class MainActivity : ComponentActivity() {
                 contactMessage = contactMessage,
                 location = location,
                 locationMessage = locationMessage,
-                onStart = {
+                onEnableProtection = {
                     location = null
                     includeLocationInDraft = false
                     locationMessage = null
                     enableProtection()
                 },
-                onEnd = ::disableProtection,
+                onPauseProtection = ::disableProtection,
                 onCancelCheck = monitor::cancelCheck,
                 onTestCheck = monitor::testCheck,
+                onCallEmergency = { dial("112") },
+                onCallContact = { dial(it.phone) },
+                onFindNearby = ::findNearby,
                 onAddContact = ::addContact,
                 onRemoveContact = ::removeContact,
                 onComposeSms = ::composeSms,
@@ -223,7 +227,7 @@ class MainActivity : ComponentActivity() {
         if (!canUseContactActions() || contact !in contacts) return
         val mapLink = if (includeLocationInDraft) location?.mapLinkIfFresh(SystemClock.elapsedRealtime()) else null
         val medical = profile?.let(com.crashalert.app.profile.ProfileRules::medicalSummary).orEmpty()
-        val body = "CrashAlert: ${profile?.fullName ?: "Rider"} may need help during a ride. Please call to check." +
+        val body = "CrashAlert: ${profile?.fullName ?: "Rider"} may need help after unusual motion. Please call to check." +
             (mapLink?.let { " Last location (not live): $it" } ?: "") +
             (medical.takeIf(String::isNotEmpty)?.let { " $it" } ?: "")
         val draft = Intent(Intent.ACTION_SENDTO, Uri.fromParts("smsto", contact.phone, null)).apply {
@@ -239,6 +243,16 @@ class MainActivity : ComponentActivity() {
 
     private fun canUseContactActions(): Boolean = monitor.state.active && !monitor.incident.triggeredByTest &&
         monitor.incident.phase in setOf(IncidentPhase.CONTACT_HELP, IncidentPhase.URGENT_HELP)
+
+    private fun dial(phone: String) {
+        try { startActivity(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", phone, null))) }
+        catch (_: ActivityNotFoundException) { Toast.makeText(this, "No phone app available", Toast.LENGTH_SHORT).show() }
+    }
+
+    private fun findNearby(query: String) {
+        try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=${Uri.encode(query)}"))) }
+        catch (_: ActivityNotFoundException) { Toast.makeText(this, "No map app available", Toast.LENGTH_SHORT).show() }
+    }
 
     private fun requestLocation() {
         if (!canUseContactActions()) return
