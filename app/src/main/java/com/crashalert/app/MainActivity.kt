@@ -37,8 +37,8 @@ class MainActivity : ComponentActivity() {
     private var locationRequest: CancellationSignal? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val locationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted && canUseContactActions()) fetchLocation()
-        else locationMessage = "Location permission was not granted"
+        if (!granted) locationMessage = "Location permission was not granted"
+        else if (canUseContactActions()) fetchLocation()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
