@@ -1,6 +1,5 @@
 package com.crashalert.app.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -28,6 +26,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.crashalert.app.telemetry.RideState
+import com.crashalert.app.telemetry.IncidentPhase
+import com.crashalert.app.telemetry.IncidentState
 import com.crashalert.app.telemetry.VectorReading
 import java.text.DateFormat
 import java.util.Date
@@ -39,7 +39,14 @@ private val Muted = Color(0xFF5A6777)
 private val Background = Color(0xFFF3F7F8)
 
 @Composable
-fun RideScreen(state: RideState, onStart: () -> Unit, onEnd: () -> Unit) {
+fun RideScreen(
+    state: RideState,
+    incident: IncidentState,
+    onStart: () -> Unit,
+    onEnd: () -> Unit,
+    onCancelCheck: () -> Unit,
+    onTestCheck: () -> Unit
+) {
     MaterialTheme {
         Surface(color = Background, modifier = Modifier.fillMaxSize()) {
             Column(
@@ -70,6 +77,12 @@ fun RideScreen(state: RideState, onStart: () -> Unit, onEnd: () -> Unit) {
 
                 if (state.active) {
                     OutlinedButton(onClick = onEnd, modifier = Modifier.fillMaxWidth()) { Text("End Ride") }
+                    IncidentCard(incident, onCancelCheck)
+                    if (incident.phase == IncidentPhase.MONITORING) {
+                        OutlinedButton(onClick = onTestCheck, modifier = Modifier.fillMaxWidth()) {
+                            Text("Test self-check")
+                        }
+                    }
                 } else {
                     Button(
                         onClick = onStart,
@@ -91,6 +104,29 @@ fun RideScreen(state: RideState, onStart: () -> Unit, onEnd: () -> Unit) {
                     }
                 }
                 Spacer(Modifier.height(8.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun IncidentCard(incident: IncidentState, onCancelCheck: () -> Unit) {
+    val (heading, detail) = when (incident.phase) {
+        IncidentPhase.MONITORING -> "Monitoring motion" to "A possible impact will open a self-check."
+        IncidentPhase.SELF_CHECK -> "Are you okay?" to "Possible impact detected. Confirm you are okay within ${incident.secondsRemaining} seconds."
+        IncidentPhase.CONTACT_HELP -> "Contact help recommended" to "No response to the self-check. Check your situation and contact someone you trust. Urgent prompt in ${incident.secondsRemaining} seconds."
+        IncidentPhase.URGENT_HELP -> "Urgent help recommended" to "No response recorded. Call emergency services or contact someone you trust if you need help. No message or call has been sent."
+        IncidentPhase.CANCELLED -> "Check cancelled" to "You marked yourself okay. Detection resumes in ${incident.secondsRemaining} seconds."
+    }
+    Card(colors = CardDefaults.cardColors(containerColor = if (incident.phase == IncidentPhase.MONITORING) Color.White else Color(0xFFFFF0E8))) {
+        Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(heading, fontWeight = FontWeight.Bold, color = Navy, fontSize = 18.sp)
+            if (incident.triggeredByTest) Text("Test check · no alerts will be sent", color = Teal, fontSize = 13.sp)
+            Text(detail, color = Muted)
+            if (incident.phase == IncidentPhase.SELF_CHECK || incident.phase == IncidentPhase.CONTACT_HELP || incident.phase == IncidentPhase.URGENT_HELP) {
+                Button(onClick = onCancelCheck, colors = ButtonDefaults.buttonColors(containerColor = Teal)) {
+                    Text("I'm okay · cancel check")
+                }
             }
         }
     }

@@ -15,8 +15,11 @@ class MainActivity : ComponentActivity() {
         setContent {
             RideScreen(
                 state = monitor.state,
+                incident = monitor.incident,
                 onStart = monitor::startRide,
-                onEnd = { monitor.endRide() }
+                onEnd = { monitor.endRide() },
+                onCancelCheck = monitor::cancelCheck,
+                onTestCheck = monitor::testCheck
             )
         }
     }
