@@ -143,6 +143,7 @@ class MonitoringService : Service() {
             startForeground(NOTIFICATION_ID, notification())
             if (permitted) startLocationTracking()
         }
+        if (!monitor.state.active) (application as CrashAlertApplication).reports.resetSession()
         monitor.startRide()
         handler.removeCallbacks(update)
         handler.post(update)
@@ -151,6 +152,7 @@ class MonitoringService : Service() {
 
     override fun onDestroy() {
         handler.removeCallbacks(update)
+        (application as CrashAlertApplication).reports.resetSession()
         stopLocationTracking()
         alarm?.stop()
         alarm = null

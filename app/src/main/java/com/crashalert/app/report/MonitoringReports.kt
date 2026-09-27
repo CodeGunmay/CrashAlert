@@ -49,6 +49,8 @@ class MonitoringReportStore(context: Context) {
     private val prefs = context.getSharedPreferences("monitoring_history", Context.MODE_PRIVATE)
     private var lastHeartbeat = 0L
 
+    @Synchronized fun resetSession() { lastHeartbeat = 0L }
+
     @Synchronized fun heartbeat(elapsedMillis: Long, today: LocalDate = LocalDate.now()): Boolean {
         if (lastHeartbeat == 0L || elapsedMillis < lastHeartbeat) {
             lastHeartbeat = elapsedMillis
