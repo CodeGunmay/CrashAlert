@@ -11,7 +11,6 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.net.Uri
-import android.media.RingtoneManager
 import android.os.CancellationSignal
 import android.os.Handler
 import android.os.Looper
@@ -24,7 +23,7 @@ import androidx.core.location.LocationManagerCompat
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.DisposableEffect
+import android.os.Build
 import com.crashalert.app.contacts.ContactRules
 import com.crashalert.app.contacts.TrustedContact
 import com.crashalert.app.contacts.TrustedContactStore
@@ -38,7 +37,7 @@ import com.crashalert.app.telemetry.AndroidMotionMonitor
 import com.crashalert.app.ui.RideScreen
 
 class MainActivity : ComponentActivity() {
-    private lateinit var monitor: AndroidMotionMonitor
+    private val monitor: AndroidMotionMonitor get() = (application as CrashAlertApplication).monitor
     private lateinit var contactStore: TrustedContactStore
     private lateinit var profileStore: RiderProfileStore
     private var profile by mutableStateOf<RiderProfile?>(null)
@@ -52,6 +51,7 @@ class MainActivity : ComponentActivity() {
     private var locationMessage by mutableStateOf<String?>(null)
     private var locationRequest: CancellationSignal? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* Protection remains visible in system task controls if denied. */ }
     private val rideLocationListener = LocationListener { fix -> acceptRideLocation(fix) }
     private val rideLocationPermission = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
         if (grants[Manifest.permission.ACCESS_FINE_LOCATION] == true || grants[Manifest.permission.ACCESS_COARSE_LOCATION] == true) {
@@ -65,23 +65,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        monitor = AndroidMotionMonitor(this)
         contactStore = TrustedContactStore(this)
         profileStore = RiderProfileStore(this)
         profile = profileStore.load()
         contacts = contactStore.load()
         readBattery()
         setContent {
-            val phase = monitor.incident.phase
-            DisposableEffect(phase) {
-                val tone = if (phase == IncidentPhase.SELF_CHECK) {
-                    val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                        ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-                    uri?.let { RingtoneManager.getRingtone(this@MainActivity, it) }
-                } else null
-                try { tone?.play() } catch (_: RuntimeException) { /* Silent devices still show the check. */ }
-                onDispose { tone?.stop() }
-            }
             RideScreen(
                 state = monitor.state,
                 incident = monitor.incident,
@@ -97,13 +86,9 @@ class MainActivity : ComponentActivity() {
                     location = null
                     includeLocationInDraft = false
                     locationMessage = null
-                    monitor.startRide()
-                    if (monitor.state.active) requestRideLocation()
+                    enableProtection()
                 },
-                onEnd = {
-                    stopRideLocationUpdates()
-                    monitor.endRide()
-                },
+                onEnd = ::disableProtection,
                 onCancelCheck = monitor::cancelCheck,
                 onTestCheck = monitor::testCheck,
                 onAddContact = ::addContact,
@@ -112,6 +97,9 @@ class MainActivity : ComponentActivity() {
                 onRequestLocation = ::requestLocation,
                 onSaveProfile = ::saveProfile
             )
+        }
+        if (profile != null && getSharedPreferences("protection", MODE_PRIVATE).getBoolean("enabled", false)) {
+            enableProtection()
         }
     }
 
@@ -122,15 +110,44 @@ class MainActivity : ComponentActivity() {
         location = null
         includeLocationInDraft = false
         locationMessage = null
-        monitor.endRide("Ride ended when the app left the foreground")
         super.onStop()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (monitor.state.active && (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED)) {
+            startRideLocationUpdates()
+        }
+    }
+
+    private fun enableProtection() {
+        getSharedPreferences("protection", MODE_PRIVATE).edit().putBoolean("enabled", true).apply()
+        startProtectionService()
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        mainHandler.postDelayed({ if (monitor.state.active) requestRideLocation() }, 500L)
+    }
+
+    private fun startProtectionService() {
+        try { ContextCompat.startForegroundService(this, Intent(this, MonitoringService::class.java)) }
+        catch (_: RuntimeException) { locationMessage = "Protection could not start; reopen the app and try again" }
+    }
+
+    private fun disableProtection() {
+        stopRideLocationUpdates()
+        getSharedPreferences("protection", MODE_PRIVATE).edit().putBoolean("enabled", false).apply()
+        stopService(Intent(this, MonitoringService::class.java))
     }
 
     private fun saveProfile(value: RiderProfile): Boolean {
         val saved = profileStore.save(value)
         if (saved) {
+            val firstSetup = profile == null
             profile = value.copy(fullName = value.fullName.trim())
             profileMessage = "Saved securely on this device"
+            if (firstSetup) enableProtection()
         } else profileMessage = "Could not save. Check name, date (YYYY-MM-DD), and field lengths."
         return saved
     }
@@ -212,7 +229,7 @@ class MainActivity : ComponentActivity() {
             putExtra("sms_body", body)
         }
         try {
-            contactMessage = "Opening Messages ends ride monitoring. Review and send the draft yourself."
+            contactMessage = "Review and send the draft yourself. Motion protection continues; location updates pause while Messages is open."
             startActivity(draft)
         } catch (_: ActivityNotFoundException) {
             contactMessage = "No SMS app is available on this device"

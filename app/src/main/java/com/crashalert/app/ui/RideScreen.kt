@@ -103,12 +103,12 @@ fun RideScreen(
                 Card(colors = CardDefaults.cardColors(containerColor = Navy), modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(
-                            if (state.active) "●  RIDE ACTIVE" else "●  READY TO RIDE",
+                            if (state.active) "●  PROTECTION ACTIVE" else "●  PROTECTION PAUSED",
                             color = Color(0xFF70DDD5), fontWeight = FontWeight.Bold
                         )
                         Text(
-                            if (state.active) "We're watching your motion while this screen stays open."
-                            else "A little extra confidence for every journey.",
+                            if (state.active) "Motion monitoring continues with an ongoing notification."
+                            else "Enable protection to watch for unusual motion.",
                             color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold
                         )
                         if (state.active) Text("Started ${formatTime(state.startedAtMillis)}", color = Color.White)
@@ -116,7 +116,7 @@ fun RideScreen(
                 }
 
                 if (state.active) {
-                    OutlinedButton(onClick = onEnd, modifier = Modifier.fillMaxWidth()) { Text("End Ride") }
+                    OutlinedButton(onClick = onEnd, modifier = Modifier.fillMaxWidth()) { Text("Pause protection") }
                     IncidentCard(incident, onCancelCheck)
                     if (incident.phase == IncidentPhase.MONITORING) {
                         OutlinedButton(onClick = onTestCheck, modifier = Modifier.fillMaxWidth()) {
@@ -129,7 +129,7 @@ fun RideScreen(
                         enabled = state.accelerometerAvailable || state.gyroscopeAvailable,
                         colors = ButtonDefaults.buttonColors(containerColor = Teal),
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text("Start Ride") }
+                    ) { Text("Enable protection") }
                 }
 
                 Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
@@ -174,7 +174,7 @@ fun RideScreen(
                     Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("Diagnostics", fontWeight = FontWeight.SemiBold, color = Navy)
                         Text(state.diagnostic, color = Muted)
-                        Text("Readings stop when you leave the app.", color = Muted, fontSize = 13.sp)
+                        Text("Motion monitoring continues after you leave the app. Location and speed update only while it is open.", color = Muted, fontSize = 13.sp)
                     }
                 }
                 Spacer(Modifier.height(8.dp))
@@ -381,7 +381,7 @@ private fun ContactCard(
                 }, colors = ButtonDefaults.buttonColors(containerColor = Teal)) { Text("Save contact") }
             }
             if (message != null) Text(message, color = Muted, fontSize = 13.sp)
-            if (canCompose) Text("A recent location fix is included only if you requested it. You must review and send the SMS yourself. Opening Messages ends ride monitoring.", color = Muted, fontSize = 13.sp)
+            if (canCompose) Text("A recent location fix is included only if you requested it. You must review and send the SMS yourself. Motion protection continues while Messages is open.", color = Muted, fontSize = 13.sp)
         }
     }
 }
