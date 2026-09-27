@@ -205,7 +205,7 @@ private fun EmergencyScreen(
         }
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             if (incident.triggeredByTest) Text("SAFE TEST • No messages are sent", color = Navy, fontWeight = FontWeight.Bold)
-            else {
+            else if (phase >= 2) {
                 Text("No automatic SMS is configured yet. You can request a location and open a draft below.", color = Color.White)
                 OutlinedButton(onClick = onRequestLocation, modifier = Modifier.fillMaxWidth()) { Text("Get approximate location", color = Color.White) }
                 if (locationMessage != null) Text(locationMessage, color = Color.White)
@@ -217,6 +217,8 @@ private fun EmergencyScreen(
                         Text("Open SMS draft · ${contact.name}", color = Color.White)
                     }
                 }
+            } else {
+                Text("Tap I'm okay if this was a false alarm.", color = Color.White)
             }
             Button(onClick = onCancelCheck, colors = ButtonDefaults.buttonColors(containerColor = Teal), modifier = Modifier.fillMaxWidth()) {
                 Text("I'M OKAY  ·  CANCEL", Modifier.padding(vertical = 12.dp), fontWeight = FontWeight.Bold)
