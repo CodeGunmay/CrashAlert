@@ -36,6 +36,8 @@ import com.crashalert.app.telemetry.IncidentState
 import com.crashalert.app.telemetry.VectorReading
 import com.crashalert.app.contacts.ContactRules
 import com.crashalert.app.contacts.TrustedContact
+import com.crashalert.app.location.RideLocation
+import android.os.SystemClock
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
@@ -51,13 +53,16 @@ fun RideScreen(
     incident: IncidentState,
     contacts: List<TrustedContact>,
     contactMessage: String?,
+    location: RideLocation?,
+    locationMessage: String?,
     onStart: () -> Unit,
     onEnd: () -> Unit,
     onCancelCheck: () -> Unit,
     onTestCheck: () -> Unit,
     onAddContact: (String, String) -> Unit,
     onRemoveContact: (TrustedContact) -> Unit,
-    onComposeSms: (TrustedContact) -> Unit
+    onComposeSms: (TrustedContact) -> Unit,
+    onRequestLocation: () -> Unit
 ) {
     MaterialTheme {
         Surface(color = Background, modifier = Modifier.fillMaxSize()) {
@@ -114,9 +119,12 @@ fun RideScreen(
                     canCompose = state.active && !incident.triggeredByTest &&
                         incident.phase in setOf(IncidentPhase.CONTACT_HELP, IncidentPhase.URGENT_HELP),
                     message = contactMessage,
+                    location = location,
+                    locationMessage = locationMessage,
                     onAdd = onAddContact,
                     onRemove = onRemoveContact,
-                    onCompose = onComposeSms
+                    onCompose = onComposeSms,
+                    onRequestLocation = onRequestLocation
                 )
 
                 Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
@@ -138,9 +146,12 @@ private fun ContactCard(
     editingEnabled: Boolean,
     canCompose: Boolean,
     message: String?,
+    location: RideLocation?,
+    locationMessage: String?,
     onAdd: (String, String) -> Unit,
     onRemove: (TrustedContact) -> Unit,
-    onCompose: (TrustedContact) -> Unit
+    onCompose: (TrustedContact) -> Unit,
+    onRequestLocation: () -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
@@ -148,6 +159,13 @@ private fun ContactCard(
         Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Trusted contacts", fontWeight = FontWeight.Bold, color = Navy, fontSize = 18.sp)
             Text("Saved on this device · ${contacts.size}/${ContactRules.MAX_CONTACTS}", color = Muted, fontSize = 13.sp)
+            if (canCompose) {
+                OutlinedButton(onClick = onRequestLocation) { Text("Get approximate location for draft") }
+                Text(locationMessage ?: "Location is optional and requested only when you tap above.", color = Muted, fontSize = 13.sp)
+                if (location?.mapLinkIfFresh(SystemClock.elapsedRealtime()) != null) {
+                    Text("Fix accuracy about ${location.accuracyMeters.toInt()} m", color = Muted, fontSize = 13.sp)
+                }
+            }
             contacts.forEach { contact ->
                 Text("${contact.name} · ${contact.phone}", color = Navy)
                 if (editingEnabled) {
@@ -171,7 +189,7 @@ private fun ContactCard(
                 }, colors = ButtonDefaults.buttonColors(containerColor = Teal)) { Text("Save contact") }
             }
             if (message != null) Text(message, color = Muted, fontSize = 13.sp)
-            if (canCompose) Text("An SMS draft opens in your messaging app. You must review and send it yourself. Opening the app ends ride monitoring.", color = Muted, fontSize = 13.sp)
+            if (canCompose) Text("A recent location fix is included only if you requested it. You must review and send the SMS yourself. Opening Messages ends ride monitoring.", color = Muted, fontSize = 13.sp)
         }
     }
 }
