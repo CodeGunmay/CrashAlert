@@ -50,18 +50,23 @@ class MonitoringService : Service() {
     private val update = object : Runnable {
         override fun run() {
             if (!monitor.state.active) { stopSelf(); return }
+            val app = application as CrashAlertApplication
+            if (app.reports.heartbeat(android.os.SystemClock.elapsedRealtime())) app.reportVersion++
             val phase = monitor.incident.phase
             if (phase != lastPhase) {
                 lastPhase = phase
                 updateAlarm(phase)
                 (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(NOTIFICATION_ID, notification())
                 if (phase == IncidentPhase.SELF_CHECK && !monitor.incident.triggeredByTest) {
+                    app.reports.impact()
+                    app.reportVersion++
                     incidentId = UUID.randomUUID().toString()
                     cloudAccepted = false
                     lastAttemptAt = 0L
                     (application as CrashAlertApplication).cloudAlertStatus = "60-second check; no alert requested yet"
                 }
                 if (phase == IncidentPhase.CANCELLED) {
+                    if (!monitor.incident.triggeredByTest) { app.reports.cancelled(); app.reportVersion++ }
                     if (cloudAccepted) cancelIncidentId = incidentId
                     (application as CrashAlertApplication).cloudAlertStatus = if (cloudAccepted)
                         "Cancelling cloud follow-ups; a provider may already have queued messages" else "Check cancelled before any cloud request was accepted"
@@ -91,6 +96,7 @@ class MonitoringService : Service() {
                 dispatcher.send(id, (application as CrashAlertApplication).latestBackgroundLocation) { accepted, status ->
                     requestInFlight = false
                     cloudAccepted = accepted
+                    if (accepted) { app.reports.cloudAccepted(); app.reportVersion++ }
                     (application as CrashAlertApplication).cloudAlertStatus = status
                     if (accepted && monitor.incident.phase == IncidentPhase.CANCELLED) {
                         cancelIncidentId = id
@@ -137,6 +143,7 @@ class MonitoringService : Service() {
             startForeground(NOTIFICATION_ID, notification())
             if (permitted) startLocationTracking()
         }
+        if (!monitor.state.active) (application as CrashAlertApplication).reports.resetSession()
         monitor.startRide()
         handler.removeCallbacks(update)
         handler.post(update)
@@ -145,6 +152,7 @@ class MonitoringService : Service() {
 
     override fun onDestroy() {
         handler.removeCallbacks(update)
+        (application as CrashAlertApplication).reports.resetSession()
         stopLocationTracking()
         alarm?.stop()
         alarm = null
