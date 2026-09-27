@@ -11,6 +11,7 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.net.Uri
+import android.provider.Settings
 import android.widget.Toast
 import android.os.CancellationSignal
 import android.os.Handler
@@ -36,6 +37,13 @@ import com.crashalert.app.profile.RiderProfile
 import com.crashalert.app.profile.RiderProfileStore
 import com.crashalert.app.telemetry.AndroidMotionMonitor
 import com.crashalert.app.ui.CrashAlertAppScreen
+import com.google.firebase.FirebaseApp
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
+import com.google.firebase.auth.PhoneAuthCredential
+import com.google.firebase.auth.PhoneAuthOptions
+import com.google.firebase.auth.PhoneAuthProvider
+import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
     private val monitor: AndroidMotionMonitor get() = (application as CrashAlertApplication).monitor
@@ -43,6 +51,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var profileStore: RiderProfileStore
     private var profile by mutableStateOf<RiderProfile?>(null)
     private var profileMessage by mutableStateOf<String?>(null)
+    private var authStatus by mutableStateOf("Cloud alerts are not configured in this build")
+    private var verificationId: String? = null
     private var contacts by mutableStateOf<List<TrustedContact>>(emptyList())
     private var contactMessage by mutableStateOf<String?>(null)
     private var location by mutableStateOf<RideLocation?>(null)
@@ -57,6 +67,7 @@ class MainActivity : ComponentActivity() {
     private val rideLocationPermission = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
         if (grants[Manifest.permission.ACCESS_FINE_LOCATION] == true || grants[Manifest.permission.ACCESS_COARSE_LOCATION] == true) {
             startRideLocationUpdates()
+            startProtectionService()
         } else locationMessage = "Location off: speed and heading unavailable; motion check still works"
     }
     private val locationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -70,6 +81,9 @@ class MainActivity : ComponentActivity() {
         profileStore = RiderProfileStore(this)
         profile = profileStore.load()
         contacts = contactStore.load()
+        if (FirebaseApp.getApps(this).isNotEmpty()) {
+            authStatus = if (FirebaseAuth.getInstance().currentUser != null) "Phone verified for cloud alerts" else "Verify your phone to connect cloud alerts"
+        }
         readBattery()
         setContent {
             CrashAlertAppScreen(
@@ -78,6 +92,8 @@ class MainActivity : ComponentActivity() {
                 contacts = contacts,
                 profile = profile,
                 profileMessage = profileMessage,
+                authStatus = authStatus,
+                cloudAlertStatus = (application as CrashAlertApplication).cloudAlertStatus,
                 metrics = metrics,
                 batteryPercent = batteryPercent,
                 contactMessage = contactMessage,
@@ -99,6 +115,11 @@ class MainActivity : ComponentActivity() {
                 onRemoveContact = ::removeContact,
                 onComposeSms = ::composeSms,
                 onRequestLocation = ::requestLocation,
+                onOpenPermissionSettings = {
+                    startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+                },
+                onSendOtp = ::sendOtp,
+                onVerifyOtp = ::verifyOtp,
                 onSaveProfile = ::saveProfile
             )
         }
@@ -120,6 +141,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        (application as CrashAlertApplication).latestBackgroundLocation?.let { fix ->
+            if (fix.mapLinkIfFresh(SystemClock.elapsedRealtime()) != null) location = fix
+        }
+        if (monitor.state.active) startProtectionService()
         if (monitor.state.active && (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
                 ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED)) {
             startRideLocationUpdates()
@@ -234,7 +259,7 @@ class MainActivity : ComponentActivity() {
             putExtra("sms_body", body)
         }
         try {
-            contactMessage = "Review and send the draft yourself. Motion protection continues; location updates pause while Messages is open."
+            contactMessage = "Review and send the draft yourself. Motion protection continues; screen location updates pause while Messages is open."
             startActivity(draft)
         } catch (_: ActivityNotFoundException) {
             contactMessage = "No SMS app is available on this device"
@@ -252,6 +277,41 @@ class MainActivity : ComponentActivity() {
     private fun findNearby(query: String) {
         try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=${Uri.encode(query)}"))) }
         catch (_: ActivityNotFoundException) { Toast.makeText(this, "No map app available", Toast.LENGTH_SHORT).show() }
+    }
+
+    private fun sendOtp(phone: String) {
+        if (FirebaseApp.getApps(this).isEmpty() || !phone.matches(Regex("\\+[1-9][0-9]{6,14}"))) {
+            authStatus = "Cloud configuration or international phone number is missing"
+            return
+        }
+        val auth = FirebaseAuth.getInstance()
+        authStatus = "Requesting verification code…"
+        val callbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
+            override fun onVerificationCompleted(credential: PhoneAuthCredential) { finishSignIn(credential) }
+            override fun onVerificationFailed(error: com.google.firebase.FirebaseException) {
+                authStatus = "Verification failed: ${error.localizedMessage ?: "try again"}"
+            }
+            override fun onCodeSent(id: String, token: PhoneAuthProvider.ForceResendingToken) {
+                verificationId = id
+                authStatus = "Code sent. Enter the code below."
+            }
+        }
+        PhoneAuthProvider.verifyPhoneNumber(PhoneAuthOptions.newBuilder(auth)
+            .setPhoneNumber(phone).setTimeout(60L, TimeUnit.SECONDS).setActivity(this)
+            .setCallbacks(callbacks).build())
+    }
+
+    private fun verifyOtp(code: String) {
+        val id = verificationId ?: run { authStatus = "Request a code first"; return }
+        if (!code.matches(Regex("[0-9]{6}"))) { authStatus = "Enter the six-digit code"; return }
+        finishSignIn(PhoneAuthProvider.getCredential(id, code))
+    }
+
+    private fun finishSignIn(credential: PhoneAuthCredential) {
+        FirebaseAuth.getInstance().signInWithCredential(credential).addOnCompleteListener(this) { task ->
+            authStatus = if (task.isSuccessful) "Phone verified for cloud alerts"
+                else "Code not accepted: ${task.exception?.localizedMessage ?: "try again"}"
+        }
     }
 
     private fun requestLocation() {
