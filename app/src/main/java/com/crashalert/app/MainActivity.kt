@@ -98,7 +98,8 @@ class MainActivity : ComponentActivity() {
                 onSaveProfile = ::saveProfile
             )
         }
-        if (profile != null && getSharedPreferences("protection", MODE_PRIVATE).getBoolean("enabled", false)) {
+        val protectionPreference = getSharedPreferences("protection", MODE_PRIVATE)
+        if (profile != null && (!protectionPreference.contains("enabled") || protectionPreference.getBoolean("enabled", false))) {
             enableProtection()
         }
     }
