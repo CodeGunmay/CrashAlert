@@ -98,14 +98,11 @@ class MonitoringService : Service() {
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val stop = PendingIntent.getService(this, 1, Intent(this, MonitoringService::class.java).setAction(ACTION_STOP),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val channel = if (phase in setOf(IncidentPhase.SELF_CHECK, IncidentPhase.CONTACT_HELP, IncidentPhase.URGENT_HELP)) ALERT_CHANNEL_ID else CHANNEL_ID
         return Notification.Builder(this, channel)
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle(title).setContentText(detail)
             .setContentIntent(open).setOngoing(true)
-            .addAction(Notification.Action.Builder(null, "Stop protection", stop).build())
             .build()
     }
 
