@@ -19,7 +19,8 @@ data class RiderProfile(
     val allergies: String = "",
     val conditions: String = "",
     val medications: String = "",
-    val includeMedicalInDraft: Boolean = false
+    val includeMedicalInDraft: Boolean = false,
+    val includeMedicalInAutomaticAlerts: Boolean = false
 )
 
 object ProfileRules {
@@ -45,6 +46,9 @@ object ProfileRules {
         if (profile.conditions.isNotBlank()) add("Conditions: ${profile.conditions.trim()}")
         if (profile.medications.isNotBlank()) add("Medications: ${profile.medications.trim()}")
     }.joinToString("; ")
+
+    fun automaticMedicalSummary(profile: RiderProfile): String =
+        if (profile.includeMedicalInAutomaticAlerts) medicalSummary(profile.copy(includeMedicalInDraft = true)) else ""
 }
 
 /** Encrypts the medical card locally with a non-exportable Android Keystore AES key. */
@@ -62,7 +66,7 @@ class RiderProfileStore(context: Context) {
         RiderProfile(
             obj.getString("fullName"), obj.optString("dateOfBirth"), obj.optString("bloodGroup"),
             obj.optString("allergies"), obj.optString("conditions"), obj.optString("medications"),
-            obj.optBoolean("includeMedicalInDraft", false)
+            obj.optBoolean("includeMedicalInDraft", false), obj.optBoolean("includeMedicalInAutomaticAlerts", false)
         ).takeIf(ProfileRules::valid)
         } catch (_: Exception) { null }
     }
@@ -75,6 +79,7 @@ class RiderProfileStore(context: Context) {
                 .put("bloodGroup", profile.bloodGroup).put("allergies", profile.allergies.trim())
                 .put("conditions", profile.conditions.trim()).put("medications", profile.medications.trim())
                 .put("includeMedicalInDraft", profile.includeMedicalInDraft)
+                .put("includeMedicalInAutomaticAlerts", profile.includeMedicalInAutomaticAlerts)
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.ENCRYPT_MODE, key())
             val encoded = cipher.doFinal(obj.toString().toByteArray(Charsets.UTF_8))

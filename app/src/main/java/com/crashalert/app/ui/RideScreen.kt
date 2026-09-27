@@ -138,7 +138,7 @@ fun RideScreen(
                         Text("01  •  60 sec to confirm you're okay", color = Navy)
                         Text("02  •  2 min contact-help countdown", color = Navy)
                         Text("03  •  Urgent reminders every 2 min", color = Navy)
-                        Text("Alerts are on-device prompts. Automatic SMS is not connected.", fontSize = 12.sp, color = Muted)
+                        Text("Cloud alerts require account setup and a configured server.", fontSize = 12.sp, color = Muted)
                     }
                 }
 
@@ -234,7 +234,7 @@ private fun EmergencyScreen(
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             if (incident.triggeredByTest) Text("SAFE TEST • No messages are sent", color = Navy, fontWeight = FontWeight.Bold)
             else if (phase >= 2) {
-                Text("No automatic SMS is configured yet. You can request a location and open a draft below.", color = Color.White)
+                Text("Cloud delivery status is shown on Home. You can open a manual draft below.", color = Color.White)
                 OutlinedButton(onClick = onRequestLocation, modifier = Modifier.fillMaxWidth()) { Text("Get approximate location", color = Color.White) }
                 if (locationMessage != null) Text(locationMessage, color = Color.White)
                 if (location?.mapLinkIfFresh(SystemClock.elapsedRealtime()) != null) {
@@ -271,6 +271,7 @@ internal fun ProfileForm(
     var conditions by remember(profile) { mutableStateOf(profile?.conditions.orEmpty()) }
     var medications by remember(profile) { mutableStateOf(profile?.medications.orEmpty()) }
     var include by remember(profile) { mutableStateOf(profile?.includeMedicalInDraft ?: false) }
+    var includeAutomatic by remember(profile) { mutableStateOf(profile?.includeMedicalInAutomaticAlerts ?: false) }
     var expanded by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Spacer(Modifier.height(8.dp))
@@ -299,11 +300,15 @@ internal fun ProfileForm(
                     Text("Include my Medical ID in SMS drafts I open", color = Navy)
                 }
                 Text("You must review and send each draft yourself. No medical data is sent by saving this card.", color = Muted, fontSize = 12.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = includeAutomatic, onCheckedChange = { includeAutomatic = it })
+                    Text("Attach Medical ID to automatic contact alerts if cloud delivery is connected", color = Navy)
+                }
             }
         }
         if (message != null) Text(message, color = Muted)
         Button(onClick = {
-            onSave(RiderProfile(name, dob, blood, allergies, conditions, medications, include))
+            onSave(RiderProfile(name, dob, blood, allergies, conditions, medications, include, includeAutomatic))
         }, colors = ButtonDefaults.buttonColors(containerColor = Teal), modifier = Modifier.fillMaxWidth()) { Text("Save and continue") }
         if (profile != null) OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
     }

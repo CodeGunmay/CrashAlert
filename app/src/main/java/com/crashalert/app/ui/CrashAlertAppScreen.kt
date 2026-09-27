@@ -60,7 +60,8 @@ private enum class Page(val title: String, val symbol: String) {
 
 @Composable
 fun CrashAlertAppScreen(
-    state: RideState, incident: IncidentState, profile: RiderProfile?, profileMessage: String?,
+    state: RideState, incident: IncidentState, profile: RiderProfile?, profileMessage: String?, authStatus: String,
+    cloudAlertStatus: String,
     contacts: List<TrustedContact>, contactMessage: String?, location: RideLocation?, locationMessage: String?,
     metrics: RideMetrics, batteryPercent: Int?,
     onEnableProtection: () -> Unit, onPauseProtection: () -> Unit,
@@ -68,6 +69,8 @@ fun CrashAlertAppScreen(
     onCallContact: (TrustedContact) -> Unit, onFindNearby: (String) -> Unit,
     onAddContact: (String, String) -> Unit, onRemoveContact: (TrustedContact) -> Unit,
     onComposeSms: (TrustedContact) -> Unit, onRequestLocation: () -> Unit,
+    onOpenPermissionSettings: () -> Unit,
+    onSendOtp: (String) -> Unit, onVerifyOtp: (String) -> Unit,
     onSaveProfile: (RiderProfile) -> Boolean
 ) {
     var selected by rememberSaveable { mutableStateOf(Page.HOME.name) }
@@ -81,7 +84,7 @@ fun CrashAlertAppScreen(
                     onCancel = { editingProfile = false })
             }
         } else if (phaseVisible) {
-            EmergencyPage(incident, contacts, locationMessage, onCancelCheck,
+            EmergencyPage(incident, contacts, locationMessage, cloudAlertStatus, onCancelCheck,
                 onCallEmergency, onCallContact, onComposeSms, onRequestLocation)
         } else {
             Scaffold(containerColor = Dark, bottomBar = {
@@ -98,11 +101,11 @@ fun CrashAlertAppScreen(
                 Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     when (Page.valueOf(selected)) {
-                        Page.HOME -> HomePage(profile, state, contacts, location, metrics, batteryPercent)
+                        Page.HOME -> HomePage(profile, state, contacts, location, metrics, batteryPercent, cloudAlertStatus)
                         Page.RIDE -> RidePage(state, metrics, location, locationMessage, batteryPercent)
                         Page.SERVICES -> ServicesPage(location, onFindNearby, onCallEmergency)
                         Page.CONTACTS -> ContactsPage(contacts, contactMessage, onAddContact, onRemoveContact, onCallContact)
-                        Page.PROFILE -> ProfilePage(profile, state, onEdit = { editingProfile = true }, onEnableProtection, onTestCheck)
+                        Page.PROFILE -> ProfilePage(profile, state, authStatus, onEdit = { editingProfile = true }, onEnableProtection, onTestCheck, onOpenPermissionSettings, onSendOtp, onVerifyOtp)
                     }
                 }
             }
@@ -113,7 +116,7 @@ fun CrashAlertAppScreen(
 @Composable
 private fun HomePage(
     profile: RiderProfile, state: RideState, contacts: List<TrustedContact>,
-    location: RideLocation?, metrics: RideMetrics, batteryPercent: Int?
+    location: RideLocation?, metrics: RideMetrics, batteryPercent: Int?, cloudAlertStatus: String
 ) {
     Text("Good to see you,", color = Color.LightGray)
     Text(profile.fullName.substringBefore(' '), fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Color.White)
@@ -134,6 +137,7 @@ private fun HomePage(
         Text("EMERGENCY CONTACTS", color = Aqua, fontWeight = FontWeight.Bold)
         Text(if (contacts.isEmpty()) "Add a trusted contact in Contacts" else contacts.joinToString(" · ") { it.name }, color = Color.White)
         Text("Medical ID: ${profile.bloodGroup.ifBlank { "blood group not set" }} · ${if (profile.includeMedicalInDraft) "opted in for manual SMS drafts" else "private"}", color = Color.LightGray)
+        Text(cloudAlertStatus, color = Color.LightGray)
     }
 }
 
@@ -161,7 +165,7 @@ private fun RidePage(
         Text("Heading: ${if (fresh) metrics.heading ?: "Unavailable" else "Unavailable"}", color = Color.White)
         Text(if (fresh && location != null) "%.5f, %.5f · ±%d m".format(Locale.US, location.latitude, location.longitude, location.accuracyMeters.toInt())
             else locationMessage ?: "Waiting for a usable location fix", color = Color.LightGray)
-        Text("Battery ${batteryPercent?.let { "$it%" } ?: "unavailable"} · location only updates while app is open", color = Color.LightGray, fontSize = 12.sp)
+        Text("Battery ${batteryPercent?.let { "$it%" } ?: "unavailable"} · this speed display refreshes while the app is open", color = Color.LightGray, fontSize = 12.sp)
     }
     DarkCard {
         Text("IMPACT MONITOR", color = Aqua, fontWeight = FontWeight.Bold)
@@ -200,7 +204,7 @@ private fun ContactsPage(
     var name by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     Text("Emergency contacts", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Color.White)
-    Text("Up to three numbers saved on this device. No automatic message is sent yet.", color = Color.LightGray)
+    Text("Up to three numbers saved on this device. Cloud SMS requires +country-code numbers, verified phone and a configured server.", color = Color.LightGray)
     contacts.forEachIndexed { index, contact ->
         DarkCard {
             Text(if (index == 0) "PRIMARY CONTACT" else "CONTACT ${index + 1}", color = Aqua, fontWeight = FontWeight.Bold)
@@ -226,8 +230,11 @@ private fun ContactsPage(
 
 @Composable
 private fun ProfilePage(
-    profile: RiderProfile, state: RideState, onEdit: () -> Unit, onEnable: () -> Unit, onTest: () -> Unit
+    profile: RiderProfile, state: RideState, authStatus: String, onEdit: () -> Unit, onEnable: () -> Unit, onTest: () -> Unit,
+    onOpenPermissionSettings: () -> Unit, onSendOtp: (String) -> Unit, onVerifyOtp: (String) -> Unit
 ) {
+    var phone by remember { mutableStateOf("") }
+    var code by remember { mutableStateOf("") }
     Text("Profile", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Color.White)
     DarkCard {
         Text(profile.fullName, fontSize = 23.sp, fontWeight = FontWeight.Bold, color = Color.White)
@@ -238,16 +245,30 @@ private fun ProfilePage(
     DarkCard {
         Text("SAFETY SETUP", color = Aqua, fontWeight = FontWeight.Bold)
         Text("Motion protection ${if (state.active) "active" else "not running"}", color = Color.White)
-        Text("Ongoing notification and local sensor checks. No automatic contact alert is connected.", color = Color.LightGray)
+        Text("Ongoing notification and local sensor checks. Cloud alerts work only when the server and phone verification are configured.", color = Color.LightGray)
         if (!state.active) Button(onClick = onEnable) { Text("Retry monitoring") }
         OutlinedButton(onClick = onTest, enabled = state.active) { Text("Test detection screen · no alert sent") }
     }
     DarkCard { Text("Reports", color = Color.White, fontWeight = FontWeight.Bold); Text("Ride summaries will appear when history recording is added.", color = Color.LightGray) }
+    DarkCard {
+        Text("LOCATION PERMISSION", color = Aqua, fontWeight = FontWeight.Bold)
+        Text("For best-effort location after the screen closes or a reboot, grant precise location and Allow all the time in Android settings. You can revoke it there at any time.", color = Color.White)
+        OutlinedButton(onClick = onOpenPermissionSettings) { Text("Open app permissions") }
+    }
+    DarkCard {
+        Text("CLOUD ALERT ACCOUNT", color = Aqua, fontWeight = FontWeight.Bold)
+        Text(authStatus, color = Color.White)
+        Text("Phone verification uses Firebase. No contact is messaged during setup.", color = Color.LightGray)
+        OutlinedTextField(phone, { phone = it }, label = { Text("Phone, e.g. +919876543210") }, modifier = Modifier.fillMaxWidth())
+        OutlinedButton(onClick = { onSendOtp(phone) }) { Text("Send verification code") }
+        OutlinedTextField(code, { code = it }, label = { Text("Six-digit code") }, modifier = Modifier.fillMaxWidth())
+        OutlinedButton(onClick = { onVerifyOtp(code) }) { Text("Verify code") }
+    }
 }
 
 @Composable
 private fun EmergencyPage(
-    incident: IncidentState, contacts: List<TrustedContact>, locationMessage: String?,
+    incident: IncidentState, contacts: List<TrustedContact>, locationMessage: String?, cloudAlertStatus: String,
     onCancel: () -> Unit, onCallEmergency: () -> Unit,
     onCallContact: (TrustedContact) -> Unit, onComposeSms: (TrustedContact) -> Unit,
     onRequestLocation: () -> Unit
@@ -260,7 +281,7 @@ private fun EmergencyPage(
             Text(if (test) "SAFE TEST · NO CONTACTS MESSAGED" else "POSSIBLE IMPACT", color = Color.White, fontWeight = FontWeight.Bold)
             Text(if (phase == IncidentPhase.SELF_CHECK) "Are you okay?" else "Check in now", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold)
             Text(if (phase == IncidentPhase.URGENT_HELP) "Next reminder in ${incident.secondsRemaining}s" else "${incident.secondsRemaining}s until next stage", color = Color.White, fontSize = 24.sp)
-            Text(if (test) "This test never sends an alert." else "No automatic SMS or call is connected. Call or open a draft below if you need help.", color = Color.White)
+            Text(if (test) "This test never sends an alert." else cloudAlertStatus, color = Color.White)
             Button(onClick = onCancel, modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = Aqua)) { Text("I'M OK · CANCEL", color = Dark) }
             if (!test && phase != IncidentPhase.SELF_CHECK) {

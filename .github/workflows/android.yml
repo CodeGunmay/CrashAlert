@@ -22,6 +22,8 @@ jobs:
           "$SDKMANAGER" 'platforms;android-36' 'build-tools;36.0.0'
       - name: Unit tests and debug build
         run: ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon
+      - name: Backend validation tests
+        run: node --test backend/validation.test.js
       - name: Save debug APK for device testing
         uses: actions/upload-artifact@v4
         with:
