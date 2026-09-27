@@ -6,6 +6,8 @@ import com.crashalert.app.location.RideLocation
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableIntStateOf
+import com.crashalert.app.report.MonitoringReportStore
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 
@@ -19,6 +21,8 @@ class CrashAlertApplication : Application() {
         }
     }
     val monitor: AndroidMotionMonitor by lazy { AndroidMotionMonitor(this) }
+    val reports: MonitoringReportStore by lazy { MonitoringReportStore(this) }
+    var reportVersion by mutableIntStateOf(0)
     var latestBackgroundLocation by mutableStateOf<RideLocation?>(null)
         private set
     var cloudAlertStatus by mutableStateOf("Cloud delivery not connected")

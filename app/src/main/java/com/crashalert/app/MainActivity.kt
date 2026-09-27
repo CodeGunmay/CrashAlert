@@ -37,6 +37,7 @@ import com.crashalert.app.profile.RiderProfile
 import com.crashalert.app.profile.RiderProfileStore
 import com.crashalert.app.telemetry.AndroidMotionMonitor
 import com.crashalert.app.ui.CrashAlertAppScreen
+import com.crashalert.app.report.MonitoringReport
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
@@ -51,6 +52,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var profileStore: RiderProfileStore
     private var profile by mutableStateOf<RiderProfile?>(null)
     private var profileMessage by mutableStateOf<String?>(null)
+    private var darkTheme by mutableStateOf(true)
     private var authStatus by mutableStateOf("Cloud alerts are not configured in this build")
     private var verificationId: String? = null
     private var contacts by mutableStateOf<List<TrustedContact>>(emptyList())
@@ -79,6 +81,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         contactStore = TrustedContactStore(this)
         profileStore = RiderProfileStore(this)
+        darkTheme = getSharedPreferences("appearance", MODE_PRIVATE).getBoolean("dark", true)
         profile = profileStore.load()
         contacts = contactStore.load()
         if (FirebaseApp.getApps(this).isNotEmpty()) {
@@ -86,6 +89,8 @@ class MainActivity : ComponentActivity() {
         }
         readBattery()
         setContent {
+            val app = application as CrashAlertApplication
+            val reportVersion = app.reportVersion
             CrashAlertAppScreen(
                 state = monitor.state,
                 incident = monitor.incident,
@@ -94,6 +99,9 @@ class MainActivity : ComponentActivity() {
                 profileMessage = profileMessage,
                 authStatus = authStatus,
                 cloudAlertStatus = (application as CrashAlertApplication).cloudAlertStatus,
+                darkTheme = darkTheme,
+                weekReport = app.reports.report(7),
+                monthReport = app.reports.report(30),
                 metrics = metrics,
                 batteryPercent = batteryPercent,
                 contactMessage = contactMessage,
@@ -113,6 +121,8 @@ class MainActivity : ComponentActivity() {
                 onFindNearby = ::findNearby,
                 onAddContact = ::addContact,
                 onRemoveContact = ::removeContact,
+                onMakePrimary = ::makePrimary,
+                onEditContact = ::editContact,
                 onComposeSms = ::composeSms,
                 onRequestLocation = ::requestLocation,
                 onOpenPermissionSettings = {
@@ -120,6 +130,11 @@ class MainActivity : ComponentActivity() {
                 },
                 onSendOtp = ::sendOtp,
                 onVerifyOtp = ::verifyOtp,
+                onToggleTheme = {
+                    darkTheme = !darkTheme
+                    getSharedPreferences("appearance", MODE_PRIVATE).edit().putBoolean("dark", darkTheme).apply()
+                },
+                onShareReport = ::shareReport,
                 onSaveProfile = ::saveProfile
             )
         }
@@ -246,6 +261,32 @@ class MainActivity : ComponentActivity() {
         contacts = contacts - contact
         contactStore.save(contacts)
         contactMessage = "Contact removed"
+    }
+
+    private fun makePrimary(contact: TrustedContact) {
+        if (contact !in contacts) return
+        contacts = listOf(contact) + contacts.filterNot { it == contact }
+        contactStore.save(contacts)
+        contactMessage = "Primary contact updated"
+    }
+
+    private fun editContact(old: TrustedContact, name: String, phone: String) {
+        if (old !in contacts) return
+        val others = contacts - old
+        val updated = ContactRules.add(others, name, phone)?.lastOrNull()
+        if (updated == null) { contactMessage = "Enter a valid name and unique phone number"; return }
+        contacts = contacts.map { if (it == old) updated else it }
+        contactStore.save(contacts)
+        contactMessage = "Contact updated"
+    }
+
+    private fun shareReport(report: MonitoringReport) {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "CrashAlert · last ${report.days} days")
+            putExtra(Intent.EXTRA_TEXT, report.shareText())
+        }
+        startActivity(Intent.createChooser(intent, "Share monitoring report"))
     }
 
     private fun composeSms(contact: TrustedContact) {
