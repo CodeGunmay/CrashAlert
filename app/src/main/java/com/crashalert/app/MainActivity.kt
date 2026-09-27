@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.net.Uri
+import android.media.RingtoneManager
 import android.os.CancellationSignal
 import android.os.Handler
 import android.os.Looper
@@ -19,6 +20,7 @@ import androidx.core.location.LocationManagerCompat
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.DisposableEffect
 import com.crashalert.app.contacts.ContactRules
 import com.crashalert.app.contacts.TrustedContact
 import com.crashalert.app.contacts.TrustedContactStore
@@ -47,6 +49,16 @@ class MainActivity : ComponentActivity() {
         contactStore = TrustedContactStore(this)
         contacts = contactStore.load()
         setContent {
+            val phase = monitor.incident.phase
+            DisposableEffect(phase) {
+                val tone = if (phase == IncidentPhase.SELF_CHECK) {
+                    val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                        ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                    uri?.let { RingtoneManager.getRingtone(this@MainActivity, it) }
+                } else null
+                try { tone?.play() } catch (_: RuntimeException) { /* Silent devices still show the check. */ }
+                onDispose { tone?.stop() }
+            }
             RideScreen(
                 state = monitor.state,
                 incident = monitor.incident,

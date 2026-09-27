@@ -32,16 +32,20 @@ class IncidentEngineTest {
         assertEquals(IncidentPhase.SELF_CHECK, engine.state.phase)
     }
 
-    @Test fun unansweredCheckAdvancesWithoutSendingAnything() {
+    @Test fun unansweredCheckAdvancesAcrossThreeTimedStagesWithoutSendingAnything() {
         val engine = IncidentEngine()
         engine.triggerTest(10_000)
         assertTrue(engine.state.triggeredByTest)
-        engine.tick(29_001)
+        engine.tick(69_001)
         assertEquals(1, engine.state.secondsRemaining)
-        engine.tick(30_000)
+        engine.tick(70_000)
         assertEquals(IncidentPhase.CONTACT_HELP, engine.state.phase)
-        engine.tick(60_000)
+        assertEquals(120, engine.state.secondsRemaining)
+        engine.tick(190_000)
         assertEquals(IncidentPhase.URGENT_HELP, engine.state.phase)
+        engine.tick(310_000)
+        assertEquals(1, engine.state.repeatCount)
+        assertTrue(engine.state.triggeredByTest)
     }
 
     @Test fun cancellationBlocksEscalationAndNewRideCanReset() {

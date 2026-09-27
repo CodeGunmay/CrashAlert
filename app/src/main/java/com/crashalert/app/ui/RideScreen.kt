@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -46,6 +47,7 @@ private val Navy = Color(0xFF101B2E)
 private val Teal = Color(0xFF087E82)
 private val Muted = Color(0xFF5A6777)
 private val Background = Color(0xFFF3F7F8)
+private val Coral = Color(0xFFFF4B3E)
 
 @Composable
 fun RideScreen(
@@ -65,7 +67,10 @@ fun RideScreen(
     onRequestLocation: () -> Unit
 ) {
     MaterialTheme {
-        Surface(color = Background, modifier = Modifier.fillMaxSize()) {
+        Surface(color = if (state.active && incident.phase in setOf(IncidentPhase.SELF_CHECK, IncidentPhase.CONTACT_HELP, IncidentPhase.URGENT_HELP)) Navy else Background, modifier = Modifier.fillMaxSize()) {
+            if (state.active && incident.phase in setOf(IncidentPhase.SELF_CHECK, IncidentPhase.CONTACT_HELP, IncidentPhase.URGENT_HELP)) {
+                EmergencyScreen(incident, onCancelCheck)
+            } else {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -74,19 +79,19 @@ fun RideScreen(
                 verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
                 Spacer(Modifier.height(8.dp))
-                Text("CrashAlert", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Navy)
-                Text("Ride monitoring", fontSize = 16.sp, color = Muted)
+                Text("CrashAlert", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Navy)
+                Text("Your ride companion", fontSize = 16.sp, color = Muted)
 
                 Card(colors = CardDefaults.cardColors(containerColor = Navy), modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(
-                            if (state.active) "RIDE ACTIVE" else "READY TO RIDE",
+                            if (state.active) "●  RIDE ACTIVE" else "●  READY TO RIDE",
                             color = Color(0xFF70DDD5), fontWeight = FontWeight.Bold
                         )
                         Text(
-                            if (state.active) "Motion readings are live while this screen is open."
-                            else "Start a ride to view motion readings from your phone.",
-                            color = Color.White, fontSize = 18.sp
+                            if (state.active) "We're watching your motion while this screen stays open."
+                            else "A little extra confidence for every journey.",
+                            color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold
                         )
                         if (state.active) Text("Started ${formatTime(state.startedAtMillis)}", color = Color.White)
                     }
@@ -107,6 +112,16 @@ fun RideScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = Teal),
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("Start Ride") }
+                }
+
+                Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("How the check works", fontSize = 19.sp, fontWeight = FontWeight.Bold, color = Navy)
+                        Text("01  •  60 sec to confirm you're okay", color = Navy)
+                        Text("02  •  2 min contact-help countdown", color = Navy)
+                        Text("03  •  Urgent reminders every 2 min", color = Navy)
+                        Text("Alerts are on-device prompts. Automatic SMS is not connected.", fontSize = 12.sp, color = Muted)
+                    }
                 }
 
                 Text("Live sensors", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Navy)
@@ -136,9 +151,64 @@ fun RideScreen(
                 }
                 Spacer(Modifier.height(8.dp))
             }
+            }
         }
     }
 }
+
+@Composable
+private fun EmergencyScreen(incident: IncidentState, onCancelCheck: () -> Unit) {
+    val phase = when (incident.phase) {
+        IncidentPhase.SELF_CHECK -> 1
+        IncidentPhase.CONTACT_HELP -> 2
+        else -> 3
+    }
+    val heading = when (phase) {
+        1 -> "Are you okay?"
+        2 -> "Check in now"
+        else -> "Still need help?"
+    }
+    val detail = when (phase) {
+        1 -> "Unusual motion detected. Your phone is sounding an alert."
+        2 -> "You haven't responded. Contact help is recommended."
+        else -> "No response recorded. Seek help as soon as you can."
+    }
+    val background = if (phase == 1) Coral else Color(0xFF991D23)
+    Column(
+        Modifier.fillMaxSize().padding(26.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+            Text("CrashAlert  •  EMERGENCY CHECK", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                (1..3).forEach { step ->
+                    Surface(shape = RoundedCornerShape(12.dp), color = if (step <= phase) Coral else Navy, modifier = Modifier.weight(1f)) {
+                        Text("0$step", Modifier.padding(12.dp), color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+        Surface(color = background, shape = RoundedCornerShape(32.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("!", color = Color.White, fontSize = 78.sp, fontWeight = FontWeight.Bold)
+                Text("PHASE $phase OF 3", color = Color.White, fontWeight = FontWeight.Bold)
+                Text(heading, color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                Text(detail, color = Color.White, fontSize = 17.sp)
+                Text(formatCountdown(incident.secondsRemaining), color = Color.White, fontSize = 62.sp, fontWeight = FontWeight.Bold)
+                Text(if (phase == 3) "Until next reminder" else "Until next phase", color = Color.White)
+            }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            if (incident.triggeredByTest) Text("SAFE TEST • No messages are sent", color = Navy, fontWeight = FontWeight.Bold)
+            else Text("No automatic message is configured yet. Open the contact card after cancelling to review options.", color = Muted)
+            Button(onClick = onCancelCheck, colors = ButtonDefaults.buttonColors(containerColor = Teal), modifier = Modifier.fillMaxWidth()) {
+                Text("I'M OKAY  ·  CANCEL", Modifier.padding(vertical = 12.dp), fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+private fun formatCountdown(seconds: Int): String = "%02d:%02d".format(Locale.US, seconds / 60, seconds % 60)
 
 @Composable
 private fun ContactCard(
@@ -198,9 +268,9 @@ private fun ContactCard(
 private fun IncidentCard(incident: IncidentState, onCancelCheck: () -> Unit) {
     val (heading, detail) = when (incident.phase) {
         IncidentPhase.MONITORING -> "Monitoring motion" to "A possible impact will open a self-check."
-        IncidentPhase.SELF_CHECK -> "Are you okay?" to "Possible impact detected. Confirm you are okay within ${incident.secondsRemaining} seconds."
-        IncidentPhase.CONTACT_HELP -> "Contact help recommended" to "No response to the self-check. Check your situation and contact someone you trust. Urgent prompt in ${incident.secondsRemaining} seconds."
-        IncidentPhase.URGENT_HELP -> "Urgent help recommended" to "No response recorded. Call emergency services or contact someone you trust if you need help. No message or call has been sent."
+        IncidentPhase.SELF_CHECK -> "Are you okay?" to "Possible impact detected. Confirm within ${incident.secondsRemaining} seconds."
+        IncidentPhase.CONTACT_HELP -> "Contact help recommended" to "No response. Urgent prompt in ${incident.secondsRemaining} seconds."
+        IncidentPhase.URGENT_HELP -> "Urgent help recommended" to "No response recorded. No message or call has been sent."
         IncidentPhase.CANCELLED -> "Check cancelled" to "You marked yourself okay. Detection resumes in ${incident.secondsRemaining} seconds."
     }
     Card(colors = CardDefaults.cardColors(containerColor = if (incident.phase == IncidentPhase.MONITORING) Color.White else Color(0xFFFFF0E8))) {

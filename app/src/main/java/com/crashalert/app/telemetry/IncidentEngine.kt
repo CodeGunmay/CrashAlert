@@ -9,12 +9,13 @@ data class IncidentState(
     val triggeredByTest: Boolean = false,
     val impactAtMillis: Long? = null,
     val nextTransitionAtMillis: Long? = null,
-    val secondsRemaining: Int = 0
+    val secondsRemaining: Int = 0,
+    val repeatCount: Int = 0
 )
 
 /**
  * A conservative, unvalidated heuristic for raising a self-check prompt.
- * It is not a medical or road-safety classification and does not send messages.
+ * It is not a medical or road-safety classification. This engine never sends messages.
  * All times use the monotonic sensor/elapsed-realtime clock, never wall time.
  */
 class IncidentEngine {
@@ -61,19 +62,40 @@ class IncidentEngine {
             state = when (state.phase) {
                 IncidentPhase.SELF_CHECK -> state.copy(
                     phase = IncidentPhase.CONTACT_HELP,
-                    nextTransitionAtMillis = deadline + 30_000L,
-                    secondsRemaining = 30
+                    nextTransitionAtMillis = deadline + 120_000L,
+                    secondsRemaining = 120
                 )
                 IncidentPhase.CONTACT_HELP -> state.copy(
                     phase = IncidentPhase.URGENT_HELP,
-                    nextTransitionAtMillis = null,
-                    secondsRemaining = 0
+                    nextTransitionAtMillis = deadline + 120_000L,
+                    secondsRemaining = 120
+                )
+                IncidentPhase.URGENT_HELP -> state.copy(
+                    nextTransitionAtMillis = deadline + 120_000L,
+                    secondsRemaining = 120,
+                    repeatCount = state.repeatCount + 1
                 )
                 IncidentPhase.CANCELLED -> IncidentState()
                 else -> state
             }
-            // A delayed tick can pass both deadlines. Keep the state in sync.
-            if (state.nextTransitionAtMillis != null && atMillis >= state.nextTransitionAtMillis!!) tick(atMillis)
+            // At most one extra call is needed to cross from self-check to urgent help.
+            if (state.phase == IncidentPhase.CONTACT_HELP && atMillis >= state.nextTransitionAtMillis!!) {
+                tick(atMillis)
+                return
+            }
+            // Catch up across missed repeats without one call per interval.
+            if (state.phase == IncidentPhase.URGENT_HELP && state.nextTransitionAtMillis != null &&
+                atMillis >= state.nextTransitionAtMillis!!
+            ) {
+                val missed = (atMillis - state.nextTransitionAtMillis!!) / 120_000L + 1L
+                state = state.copy(
+                    repeatCount = (state.repeatCount.toLong() + missed).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+                    nextTransitionAtMillis = state.nextTransitionAtMillis!! + missed * 120_000L
+                )
+            }
+            state.nextTransitionAtMillis?.let { next ->
+                state = state.copy(secondsRemaining = ((next - atMillis + 999L) / 1_000L).toInt())
+            }
         } else {
             state = state.copy(secondsRemaining = ((deadline - atMillis + 999L) / 1_000L).toInt())
         }
@@ -93,8 +115,8 @@ class IncidentEngine {
             phase = IncidentPhase.SELF_CHECK,
             triggeredByTest = test,
             impactAtMillis = atMillis,
-            nextTransitionAtMillis = atMillis + 20_000L,
-            secondsRemaining = 20
+            nextTransitionAtMillis = atMillis + 60_000L,
+            secondsRemaining = 60
         )
     }
 }
