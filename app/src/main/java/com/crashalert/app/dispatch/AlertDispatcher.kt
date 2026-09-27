@@ -64,22 +64,23 @@ class AlertDispatcher(private val context: Context) {
         }.addOnFailureListener { onDone(false, "Phone sign-in expired; verify in Profile") }
     }
 
-    fun cancel(eventId: String) {
-        if (!ready()) return
+    fun cancel(eventId: String, onDone: (Boolean) -> Unit) {
+        if (!ready()) { onDone(false); return }
         FirebaseAuth.getInstance().currentUser!!.getIdToken(false).addOnSuccessListener { token ->
-            val jwt = token.token ?: return@addOnSuccessListener
+            val jwt = token.token ?: run { onDone(false); return@addOnSuccessListener }
             executor.execute {
-                try {
+                val success = try {
                     val connection = URL(BuildConfig.API_URL.trimEnd('/') + "/v1/incidents/$eventId/cancel").openConnection() as HttpURLConnection
                     try {
                         connection.requestMethod = "POST"
                         connection.connectTimeout = 8_000
                         connection.readTimeout = 8_000
                         connection.setRequestProperty("Authorization", "Bearer $jwt")
-                        connection.responseCode
+                        connection.responseCode in 200..299
                     } finally { connection.disconnect() }
-                } catch (_: Exception) { /* Cancellation can fail offline; report locally. */ }
+                } catch (_: Exception) { false }
+                main.post { onDone(success) }
             }
-        }
+        }.addOnFailureListener { onDone(false) }
     }
 }

@@ -36,6 +36,9 @@ class MonitoringService : Service() {
     private var cloudAccepted = false
     private var requestInFlight = false
     private var lastAttemptAt = 0L
+    private var cancelIncidentId: String? = null
+    private var cancelInFlight = false
+    private var lastCancelAttemptAt = 0L
     private val locationListener = LocationListener { fix: Location ->
         val age = android.os.SystemClock.elapsedRealtime() - fix.elapsedRealtimeNanos / 1_000_000L
         if (age in 0..30_000L && fix.hasAccuracy()) {
@@ -59,9 +62,24 @@ class MonitoringService : Service() {
                     (application as CrashAlertApplication).cloudAlertStatus = "60-second check; no alert requested yet"
                 }
                 if (phase == IncidentPhase.CANCELLED) {
-                    if (cloudAccepted) incidentId?.let(dispatcher::cancel)
+                    if (cloudAccepted) cancelIncidentId = incidentId
                     (application as CrashAlertApplication).cloudAlertStatus = if (cloudAccepted)
-                        "Cancellation requested; a provider may already have queued messages" else "Check cancelled before any cloud request was accepted"
+                        "Cancelling cloud follow-ups; a provider may already have queued messages" else "Check cancelled before any cloud request was accepted"
+                }
+            }
+            val pendingCancel = cancelIncidentId
+            if (pendingCancel != null && !cancelInFlight &&
+                android.os.SystemClock.elapsedRealtime() - lastCancelAttemptAt >= 30_000L) {
+                lastCancelAttemptAt = android.os.SystemClock.elapsedRealtime()
+                cancelInFlight = true
+                dispatcher.cancel(pendingCancel) { success ->
+                    cancelInFlight = false
+                    if (success && cancelIncidentId == pendingCancel) {
+                        cancelIncidentId = null
+                        (application as CrashAlertApplication).cloudAlertStatus = "Follow-up cancellation accepted; previously queued SMS may still arrive"
+                    } else if (!success) {
+                        (application as CrashAlertApplication).cloudAlertStatus = "Could not cancel cloud follow-ups; retrying while monitoring runs"
+                    }
                 }
             }
             if (phase in setOf(IncidentPhase.CONTACT_HELP, IncidentPhase.URGENT_HELP) &&
@@ -74,7 +92,10 @@ class MonitoringService : Service() {
                     requestInFlight = false
                     cloudAccepted = accepted
                     (application as CrashAlertApplication).cloudAlertStatus = status
-                    if (accepted && monitor.incident.phase == IncidentPhase.CANCELLED) dispatcher.cancel(id)
+                    if (accepted && monitor.incident.phase == IncidentPhase.CANCELLED) {
+                        cancelIncidentId = id
+                        lastCancelAttemptAt = 0L
+                    }
                 }
             }
             handler.postDelayed(this, 1_000L)
