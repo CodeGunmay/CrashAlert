@@ -69,7 +69,7 @@ fun RideScreen(
     MaterialTheme {
         Surface(color = if (state.active && incident.phase in setOf(IncidentPhase.SELF_CHECK, IncidentPhase.CONTACT_HELP, IncidentPhase.URGENT_HELP)) Navy else Background, modifier = Modifier.fillMaxSize()) {
             if (state.active && incident.phase in setOf(IncidentPhase.SELF_CHECK, IncidentPhase.CONTACT_HELP, IncidentPhase.URGENT_HELP)) {
-                EmergencyScreen(incident, onCancelCheck)
+                EmergencyScreen(incident, contacts, location, locationMessage, onRequestLocation, onComposeSms, onCancelCheck)
             } else {
             Column(
                 modifier = Modifier
@@ -157,7 +157,15 @@ fun RideScreen(
 }
 
 @Composable
-private fun EmergencyScreen(incident: IncidentState, onCancelCheck: () -> Unit) {
+private fun EmergencyScreen(
+    incident: IncidentState,
+    contacts: List<TrustedContact>,
+    location: RideLocation?,
+    locationMessage: String?,
+    onRequestLocation: () -> Unit,
+    onComposeSms: (TrustedContact) -> Unit,
+    onCancelCheck: () -> Unit
+) {
     val phase = when (incident.phase) {
         IncidentPhase.SELF_CHECK -> 1
         IncidentPhase.CONTACT_HELP -> 2
@@ -174,10 +182,7 @@ private fun EmergencyScreen(incident: IncidentState, onCancelCheck: () -> Unit) 
         else -> "No response recorded. Seek help as soon as you can."
     }
     val background = if (phase == 1) Coral else Color(0xFF991D23)
-    Column(
-        Modifier.fillMaxSize().padding(26.dp),
-        verticalArrangement = Arrangement.SpaceBetween
-    ) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(26.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
             Text("CrashAlert  •  EMERGENCY CHECK", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -200,7 +205,19 @@ private fun EmergencyScreen(incident: IncidentState, onCancelCheck: () -> Unit) 
         }
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             if (incident.triggeredByTest) Text("SAFE TEST • No messages are sent", color = Navy, fontWeight = FontWeight.Bold)
-            else Text("No automatic message is configured yet. Open the contact card after cancelling to review options.", color = Muted)
+            else {
+                Text("No automatic SMS is configured yet. You can request a location and open a draft below.", color = Color.White)
+                OutlinedButton(onClick = onRequestLocation, modifier = Modifier.fillMaxWidth()) { Text("Get approximate location", color = Color.White) }
+                if (locationMessage != null) Text(locationMessage, color = Color.White)
+                if (location?.mapLinkIfFresh(SystemClock.elapsedRealtime()) != null) {
+                    Text("Recent location ready for the SMS draft (${location.accuracyMeters.toInt()} m reported accuracy).", color = Color.White)
+                }
+                contacts.forEach { contact ->
+                    OutlinedButton(onClick = { onComposeSms(contact) }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Open SMS draft · ${contact.name}", color = Color.White)
+                    }
+                }
+            }
             Button(onClick = onCancelCheck, colors = ButtonDefaults.buttonColors(containerColor = Teal), modifier = Modifier.fillMaxWidth()) {
                 Text("I'M OKAY  ·  CANCEL", Modifier.padding(vertical = 12.dp), fontWeight = FontWeight.Bold)
             }
