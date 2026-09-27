@@ -16,9 +16,14 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -29,6 +34,8 @@ import com.crashalert.app.telemetry.RideState
 import com.crashalert.app.telemetry.IncidentPhase
 import com.crashalert.app.telemetry.IncidentState
 import com.crashalert.app.telemetry.VectorReading
+import com.crashalert.app.contacts.ContactRules
+import com.crashalert.app.contacts.TrustedContact
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
@@ -42,10 +49,15 @@ private val Background = Color(0xFFF3F7F8)
 fun RideScreen(
     state: RideState,
     incident: IncidentState,
+    contacts: List<TrustedContact>,
+    contactMessage: String?,
     onStart: () -> Unit,
     onEnd: () -> Unit,
     onCancelCheck: () -> Unit,
-    onTestCheck: () -> Unit
+    onTestCheck: () -> Unit,
+    onAddContact: (String, String) -> Unit,
+    onRemoveContact: (TrustedContact) -> Unit,
+    onComposeSms: (TrustedContact) -> Unit
 ) {
     MaterialTheme {
         Surface(color = Background, modifier = Modifier.fillMaxSize()) {
@@ -96,6 +108,17 @@ fun RideScreen(
                 SensorCard("Accelerometer", "m/s²", state.accelerometerAvailable, state.accelerometer)
                 SensorCard("Gyroscope", "rad/s", state.gyroscopeAvailable, state.gyroscope)
 
+                ContactCard(
+                    contacts = contacts,
+                    editingEnabled = !state.active,
+                    canCompose = state.active && !incident.triggeredByTest &&
+                        incident.phase in setOf(IncidentPhase.CONTACT_HELP, IncidentPhase.URGENT_HELP),
+                    message = contactMessage,
+                    onAdd = onAddContact,
+                    onRemove = onRemoveContact,
+                    onCompose = onComposeSms
+                )
+
                 Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
                     Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("Diagnostics", fontWeight = FontWeight.SemiBold, color = Navy)
@@ -105,6 +128,50 @@ fun RideScreen(
                 }
                 Spacer(Modifier.height(8.dp))
             }
+        }
+    }
+}
+
+@Composable
+private fun ContactCard(
+    contacts: List<TrustedContact>,
+    editingEnabled: Boolean,
+    canCompose: Boolean,
+    message: String?,
+    onAdd: (String, String) -> Unit,
+    onRemove: (TrustedContact) -> Unit,
+    onCompose: (TrustedContact) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
+    Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+        Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Trusted contacts", fontWeight = FontWeight.Bold, color = Navy, fontSize = 18.sp)
+            Text("Saved on this device · ${contacts.size}/${ContactRules.MAX_CONTACTS}", color = Muted, fontSize = 13.sp)
+            contacts.forEach { contact ->
+                Text("${contact.name} · ${contact.phone}", color = Navy)
+                if (editingEnabled) {
+                    OutlinedButton(onClick = { onRemove(contact) }) { Text("Remove ${contact.name}") }
+                }
+                if (canCompose) {
+                    OutlinedButton(onClick = { onCompose(contact) }) { Text("Open SMS draft for ${contact.name}") }
+                }
+            }
+            if (editingEnabled && contacts.size < ContactRules.MAX_CONTACTS) {
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone number") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Button(onClick = {
+                    if (ContactRules.add(contacts, name, phone) != null) {
+                        onAdd(name, phone)
+                        name = ""
+                        phone = ""
+                    } else {
+                        onAdd(name, phone)
+                    }
+                }, colors = ButtonDefaults.buttonColors(containerColor = Teal)) { Text("Save contact") }
+            }
+            if (message != null) Text(message, color = Muted, fontSize = 13.sp)
+            if (canCompose) Text("An SMS draft opens in your messaging app. You must review and send it yourself. Opening the app ends ride monitoring.", color = Muted, fontSize = 13.sp)
         }
     }
 }
