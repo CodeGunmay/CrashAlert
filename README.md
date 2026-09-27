@@ -1,5 +1,9 @@
 # CrashAlert
 
+## Prototype download
+
+The durable prototype APK is published as a **GitHub Release asset** rather than a seven-day Actions artifact. See [prototype-v0.1.0](https://github.com/CodeGunmay/CrashAlert/releases/tag/prototype-v0.1.0). The installed APK does not expire when its original build artifact expires. The release is a debug build with no cloud credentials, so it cannot send automatic contact SMS. Keep the release page link for submissions; future versions should have their own tags.
+
 CrashAlert is an Android prototype for automatic motion checks. After saving a rider profile, the app starts a foreground service with an ongoing notification. It listens to the phone's accelerometer and gyroscope even when the app screen is closed. There is **no Start Ride button and no manual SOS button**. The Ride tab only displays live readings; protection does not depend on opening it.
 
 ## Run on a phone
