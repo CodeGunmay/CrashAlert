@@ -17,6 +17,8 @@ jobs:
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
       - name: Install Android SDK
-        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+        run: |
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | head -n 1)
+          "$SDKMANAGER" 'platforms;android-36' 'build-tools;36.0.0'
       - name: Unit tests and debug build
         run: ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon
