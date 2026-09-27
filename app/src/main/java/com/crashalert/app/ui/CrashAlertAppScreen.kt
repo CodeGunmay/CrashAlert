@@ -55,6 +55,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.Typography
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -70,10 +71,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.crashalert.app.contacts.ContactRules
+import com.crashalert.app.R
 import com.crashalert.app.contacts.TrustedContact
 import com.crashalert.app.location.RideLocation
 import com.crashalert.app.location.RideMetrics
@@ -95,10 +99,18 @@ private val night = ThemeTokens(Color(0xFF0B1522), Color(0xFF142130), Color(0xFF
 private val day = ThemeTokens(Color(0xFFF3F7FA), Color.White, Color(0xFFE9F0F4), Color(0xFF152738),
     Color(0xFF526B7C), Color(0xFFD6E2E8), Color(0xFF087F7D), Color(0xFFDDF4F0), Color(0xFFAA6900), Color(0xFFD52D49))
 private val LocalTokens = staticCompositionLocalOf { night }
+private val geist = FontFamily(Font(R.font.geist_regular, FontWeight.Normal),
+    Font(R.font.geist_medium, FontWeight.Medium), Font(R.font.geist_bold, FontWeight.Bold))
 private val type = Typography().let { base -> base.copy(
-    headlineMedium = base.headlineMedium.copy(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp),
-    titleLarge = base.titleLarge.copy(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold, letterSpacing = (-0.4).sp),
-    bodyMedium = base.bodyMedium.copy(fontFamily = FontFamily.SansSerif, letterSpacing = 0.sp)
+    headlineMedium = base.headlineMedium.copy(fontFamily = geist, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp),
+    titleLarge = base.titleLarge.copy(fontFamily = geist, fontWeight = FontWeight.Bold, letterSpacing = (-0.4).sp),
+    titleMedium = base.titleMedium.copy(fontFamily = geist),
+    bodyLarge = base.bodyLarge.copy(fontFamily = geist),
+    bodyMedium = base.bodyMedium.copy(fontFamily = geist, letterSpacing = 0.sp),
+    bodySmall = base.bodySmall.copy(fontFamily = geist),
+    labelLarge = base.labelLarge.copy(fontFamily = geist),
+    labelMedium = base.labelMedium.copy(fontFamily = geist),
+    labelSmall = base.labelSmall.copy(fontFamily = geist)
 ) }
 private enum class Page(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     HOME("Home", Icons.Outlined.Home), RIDE("Ride", Icons.Outlined.Speed),
@@ -126,7 +138,7 @@ fun CrashAlertAppScreen(
     var selected by rememberSaveable { mutableStateOf(Page.HOME.name) }
     var editingProfile by rememberSaveable { mutableStateOf(false) }
     val emergency = incident.phase in setOf(IncidentPhase.SELF_CHECK, IncidentPhase.CONTACT_HELP, IncidentPhase.URGENT_HELP)
-    CompositionLocalProvider(LocalTokens provides t) {
+    CompositionLocalProvider(LocalTokens provides t, LocalTextStyle provides TextStyle(fontFamily = geist)) {
         MaterialTheme(colorScheme = if (darkTheme) darkColorScheme(primary = t.teal, background = t.background,
             surface = t.card, onSurface = t.ink, onBackground = t.ink) else lightColorScheme(primary = t.teal,
             background = t.background, surface = t.card, onSurface = t.ink, onBackground = t.ink), typography = type) {
